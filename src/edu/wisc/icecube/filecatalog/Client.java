@@ -3,7 +3,6 @@ package edu.wisc.icecube.filecatalog;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
@@ -17,7 +16,6 @@ import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.fluent.Request;
 import org.apache.http.client.utils.URIBuilder;
-import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.entity.ContentType;
 
 public class Client {
@@ -160,6 +158,14 @@ public class Client {
 		// TODO
 	}
 	
+	/**
+	 * Deletes metadata by `mongo_id`.
+	 * 
+	 * @param mongoId The `mongo_id`.
+	 * @throws ClientProtocolException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
 	public void delete(final String mongoId) throws ClientProtocolException, IOException, URISyntaxException {
 		if(null == mongoId || 0 == mongoId.length()) {
 			throw new IllegalArgumentException("No mongo_id given");
