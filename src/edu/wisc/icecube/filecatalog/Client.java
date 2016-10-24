@@ -14,7 +14,6 @@ import org.apache.http.StatusLine;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.fluent.Request;
-import org.apache.http.client.fluent.Response;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
 
@@ -44,38 +43,7 @@ public class Client {
 	 * @throws Error Any error that has the server reported
 	 */
 	protected String getList(final URI uri) throws ClientProtocolException, IOException, Error {
-		return Request.Get(uri).execute().handleResponse(new ResponseHandler<String>() {
-			public String handleResponse(final HttpResponse response) throws IOException {
-		
-				final StatusLine statusLine = response.getStatusLine();
-				final HttpEntity entity = response.getEntity();
-				
-				if(statusLine.getStatusCode() == HttpStatus.SC_OK) {
-					final ContentType contentType = ContentType.getOrDefault(entity);
-					final Charset charset = contentType.getCharset();
-					final Reader reader = new InputStreamReader(entity.getContent(), charset);
-					
-					final StringBuilder sb = new StringBuilder();
-					final char[] buffer = new char[1024];
-					
-					int rcs = reader.read(buffer, 0, buffer.length);
-					while(rcs >= 0) {
-						sb.append(buffer, 0, rcs);
-						rcs = reader.read(buffer, 0, buffer.length);
-					}
-					
-					reader.close();
-					
-					return sb.toString();
-				} else {
-					if (null == entity) {
-			            throw new ClientProtocolException("Response contains no content");
-			        } else {
-			        	throw Error.errorFactory(statusLine.getStatusCode(), statusLine.getReasonPhrase());
-			        }
-				}
-			}
-		});
+		return Request.Get(uri).execute().handleResponse(new ResponseHandleBuilder(HttpStatus.SC_OK));
 	}
 	
 	/**
@@ -156,20 +124,25 @@ public class Client {
 		return getList(uri.build());
 	}
 	
+	/**
+	 * Tries to create a new entry of metadata. Check sever documentation for mandatory/forbidden fields.
+	 * 
+	 * @param metadata JSON style string
+	 * @return Response of server
+	 * @throws ClientProtocolException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 * @throws Error Any error that has the server reported
+	 */
 	public String create(final String metadata) throws ClientProtocolException, IOException, URISyntaxException, Error {
 		if(null == metadata || 0 == metadata.length()) {
 			throw new IllegalArgumentException("No metadata given");
 		}
 		
-		final Response r = Request.Patch(joinURIs(this.uri, "files"))
+		return Request.Post(joinURIs(this.uri, "files"))
 								  .bodyString(metadata, ContentType.APPLICATION_JSON)
-							      .execute();
-		
-		if(r.returnResponse().getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-			return r.returnContent().asString();
-		} else {
-			throw Error.errorFactory(r.returnResponse().getStatusLine().getStatusCode(), r.returnContent().asString());
-		}
+							      .execute()
+							      .handleResponse(new ResponseHandleBuilder(HttpStatus.SC_CREATED));
 	}
 	
 	public void get() {
@@ -250,5 +223,48 @@ public class Client {
 		}
 		
 		return uri;
+	}
+	
+	protected class ResponseHandleBuilder implements ResponseHandler<String> {
+		private int goodResponseCode;
+		
+		public ResponseHandleBuilder(int goodResponseCode) {
+			this.goodResponseCode = goodResponseCode;
+		}
+		
+		public String readContent(final HttpEntity entity) throws UnsupportedOperationException, IOException {
+			final ContentType contentType = ContentType.getOrDefault(entity);
+			final Charset charset = contentType.getCharset();
+			final Reader reader = new InputStreamReader(entity.getContent(), charset);
+			
+			final StringBuilder sb = new StringBuilder();
+			final char[] buffer = new char[1024];
+			
+			int rcs = reader.read(buffer, 0, buffer.length);
+			while(rcs >= 0) {
+				sb.append(buffer, 0, rcs);
+				rcs = reader.read(buffer, 0, buffer.length);
+			}
+			
+			reader.close();
+			
+			return sb.toString();
+		}
+		
+		public String handleResponse(final HttpResponse response) throws IOException {
+			final StatusLine statusLine = response.getStatusLine();
+			final HttpEntity entity = response.getEntity();
+			final String serverResponseString = readContent(entity);
+			
+			if(statusLine.getStatusCode() == this.goodResponseCode) {
+				return serverResponseString;
+			} else {
+				if (null == entity) {
+		            throw new ClientProtocolException("Response contains no content");
+		        } else {
+		        	throw Error.errorFactory(statusLine, serverResponseString);
+		        }
+			}
+		}
 	}
 }
