@@ -3,8 +3,10 @@ package edu.wisc.icecube.filecatalog;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.nio.charset.Charset;
 
 import org.apache.http.HttpEntity;
@@ -15,6 +17,7 @@ import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.fluent.Request;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.entity.ContentType;
 
 public class Client {
@@ -157,8 +160,14 @@ public class Client {
 		// TODO
 	}
 	
-	public void delete() {
-		// TODO
+	public void delete(final String mongoId) throws ClientProtocolException, IOException, URISyntaxException {
+		if(null == mongoId || 0 == mongoId.length()) {
+			throw new IllegalArgumentException("No mongo_id given");
+		}
+		
+		Request.Delete(joinURIs(this.uri, "files", URLEncoder.encode(mongoId, "UTF-8")))
+								.execute()
+								.handleResponse(new ResponseHandleBuilder(HttpStatus.SC_NO_CONTENT));
 	}
 	
 	/**
@@ -233,6 +242,10 @@ public class Client {
 		}
 		
 		public String readContent(final HttpEntity entity) throws UnsupportedOperationException, IOException {
+			if(null == entity) {
+				return null;
+			}
+			
 			final ContentType contentType = ContentType.getOrDefault(entity);
 			final Charset charset = contentType.getCharset();
 			final Reader reader = new InputStreamReader(entity.getContent(), charset);
