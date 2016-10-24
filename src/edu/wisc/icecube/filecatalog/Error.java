@@ -2,6 +2,7 @@ package edu.wisc.icecube.filecatalog;
 
 import java.lang.reflect.InvocationTargetException;
 
+import org.apache.http.StatusLine;
 import org.apache.http.client.HttpResponseException;
 
 public class Error extends HttpResponseException {
@@ -61,6 +62,14 @@ public class Error extends HttpResponseException {
 	
 	private static Error[] errors = null;
 	private static Class<?>[] errorTypes = null;
+	
+	public static Error errorFactory(final StatusLine statusLine) {
+		return errorFactory(statusLine.getStatusCode(), statusLine.getReasonPhrase());
+	}
+	
+	public static Error errorFactory(final StatusLine statusLine, final String message) {
+		return errorFactory(statusLine.getStatusCode(), message);
+	}
 	
 	public static Error errorFactory(int statusCode, final String message) {
 		if(null == errors || null == errorTypes) {
