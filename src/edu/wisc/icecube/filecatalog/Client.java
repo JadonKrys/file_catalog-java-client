@@ -20,15 +20,18 @@ import org.apache.http.entity.ContentType;
 
 import com.google.gson.Gson;
 
+import edu.wisc.icecube.filecatalog.gson.BasicMetaData;
 import edu.wisc.icecube.filecatalog.gson.FileList;
 
 public class Client {
 	protected URI uri;
 	protected final Gson gson;
+	protected final Cache cache;
 	
 	public Client(final URI uri) throws URISyntaxException {
 		this.uri = joinURIs(uri, "api");
 		this.gson = new Gson();
+		this.cache = new Cache();
 	}
 	
 	public Client(final String uri) throws URISyntaxException {
@@ -43,6 +46,8 @@ public class Client {
 	 * Queries the server by using the GET method to get the file list. It supports the
 	 * parameters `query` (a JSON style string to constrain the query), `limit` and `start`.
 	 * 
+	 * Caches automatically the `uid`/`mongo_id` mapping.
+	 * 
 	 * @param uri The URI with all parameters
 	 * @return The server response represented in {@link FileList} 
 	 * @throws ClientProtocolException
@@ -50,10 +55,16 @@ public class Client {
 	 * @throws Error Any error that has the server reported
 	 */
 	protected FileList getList(final URI uri) throws ClientProtocolException, IOException, Error {
-		return gson.fromJson(Request.Get(uri)
-									.execute()
-									.handleResponse(new ResponseHandleBuilder(HttpStatus.SC_OK)),
-							 FileList.class);
+		final FileList list = gson.fromJson(Request.Get(uri)
+												.execute()
+												.handleResponse(new ResponseHandleBuilder(HttpStatus.SC_OK)),
+										    FileList.class);
+		
+		for(BasicMetaData mapping: list.getEmbedded().getFiles()) {
+			cache.setMongoId(mapping.getUid(), mapping.getMongoId());
+		}
+		
+		return list;
 	}
 	
 	/**
