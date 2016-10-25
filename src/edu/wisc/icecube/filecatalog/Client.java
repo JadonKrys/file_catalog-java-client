@@ -195,6 +195,8 @@ public class Client {
 		Request.Delete(joinURIs(this.uri, "files", URLEncoder.encode(mongoId, "UTF-8")))
 								.execute()
 								.handleResponse(new ResponseHandleBuilder(HttpStatus.SC_NO_CONTENT));
+		
+		cache.clearCacheByMongoId(mongoId);
 	}
 	
 	/**
