@@ -18,11 +18,17 @@ import org.apache.http.client.fluent.Request;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
 
+import com.google.gson.Gson;
+
+import edu.wisc.icecube.filecatalog.gson.FileList;
+
 public class Client {
 	protected URI uri;
+	protected final Gson gson;
 	
 	public Client(final URI uri) throws URISyntaxException {
 		this.uri = joinURIs(uri, "api");
+		this.gson = new Gson();
 	}
 	
 	public Client(final String uri) throws URISyntaxException {
@@ -38,25 +44,28 @@ public class Client {
 	 * parameters `query` (a JSON style string to constrain the query), `limit` and `start`.
 	 * 
 	 * @param uri The URI with all parameters
-	 * @return The server response
+	 * @return The server response represented in {@link FileList} 
 	 * @throws ClientProtocolException
 	 * @throws IOException
 	 * @throws Error Any error that has the server reported
 	 */
-	protected String getList(final URI uri) throws ClientProtocolException, IOException, Error {
-		return Request.Get(uri).execute().handleResponse(new ResponseHandleBuilder(HttpStatus.SC_OK));
+	protected FileList getList(final URI uri) throws ClientProtocolException, IOException, Error {
+		return gson.fromJson(Request.Get(uri)
+									.execute()
+									.handleResponse(new ResponseHandleBuilder(HttpStatus.SC_OK)),
+							 FileList.class);
 	}
 	
 	/**
 	 * Lists the files.
 	 * 
-	 * @return JSON style string (response from server)
+	 * @return The server response represented in {@link FileList} 
 	 * @throws ClientProtocolException
 	 * @throws IOException
 	 * @throws URISyntaxException
 	 * @throws Error Any error that has the server reported
 	 */
-	public String getList() throws ClientProtocolException, IOException, URISyntaxException, Error {
+	public FileList getList() throws ClientProtocolException, IOException, URISyntaxException, Error {
 		return getList(null, null, null);
 	}
 	
@@ -66,14 +75,14 @@ public class Client {
 	 * @see #getList()
 	 * @see #getList(Integer, Integer)
 	 * @see #getList(String, Integer, Integer)
-	 * @param query JSON style string to constrain the query
+	 * @param The server response represented in {@link FileList} 
 	 * @return JSON style string (response from server)
 	 * @throws ClientProtocolException
 	 * @throws IOException
 	 * @throws URISyntaxException
 	 * @throws Error Any error that has the server reported
 	 */
-	public String getList(final String query) throws ClientProtocolException, IOException, URISyntaxException, Error {
+	public FileList getList(final String query) throws ClientProtocolException, IOException, URISyntaxException, Error {
 		return getList(query, null, null);
 	}
 	
@@ -85,13 +94,13 @@ public class Client {
 	 * @see #getList(String, Integer, Integer)
 	 * @param limit Limits the number of returned files
 	 * @param start Offset of the file list
-	 * @return JSON style string (response from server)
+	 * @return The server response represented in {@link FileList} 
 	 * @throws ClientProtocolException
 	 * @throws IOException
 	 * @throws URISyntaxException
 	 * @throws Error Any error that has the server reported
 	 */
-	public String getList(final Integer limit, final Integer start) throws ClientProtocolException, IOException, URISyntaxException, Error {
+	public FileList getList(final Integer limit, final Integer start) throws ClientProtocolException, IOException, URISyntaxException, Error {
 		return getList(null, limit, start);
 	}
 	
@@ -101,13 +110,13 @@ public class Client {
 	 * @param query
 	 * @param limit
 	 * @param start
-	 * @return JSON style string (response from server)
+	 * @return The server response represented in {@link FileList} 
 	 * @throws ClientProtocolException
 	 * @throws IOException
 	 * @throws URISyntaxException
 	 * @throws Error Any error that has the server reported
 	 */
-	public String getList(final String query, final Integer limit, final Integer start) throws ClientProtocolException, IOException, URISyntaxException, Error {
+	public FileList getList(final String query, final Integer limit, final Integer start) throws ClientProtocolException, IOException, URISyntaxException, Error {
 		final URIBuilder uri = new URIBuilder(joinURIs(this.uri, "files"));
 		
 		if(null != query) {
