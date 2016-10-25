@@ -3,11 +3,13 @@ package edu.wisc.icecube.filecatalog;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
@@ -19,8 +21,10 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.ContentType;
 
 import com.google.gson.Gson;
+import com.google.gson.internal.LinkedTreeMap;
 
 import edu.wisc.icecube.filecatalog.gson.BasicMetaData;
+import edu.wisc.icecube.filecatalog.gson.Creation;
 import edu.wisc.icecube.filecatalog.gson.FileList;
 
 public class Client {
@@ -149,25 +153,72 @@ public class Client {
 	 * Tries to create a new entry of metadata. Check sever documentation for mandatory/forbidden fields.
 	 * 
 	 * @param metadata JSON style string
-	 * @return Response of server
+	 * @return Response of server represented as {@link Creation}
 	 * @throws ClientProtocolException
 	 * @throws IOException
 	 * @throws URISyntaxException
 	 * @throws Error Any error that has the server reported
 	 */
-	public String create(final String metadata) throws ClientProtocolException, IOException, URISyntaxException, Error {
+	public Creation create(final String metadata) throws ClientProtocolException, IOException, URISyntaxException, Error {
 		if(null == metadata || 0 == metadata.length()) {
 			throw new IllegalArgumentException("No metadata given");
 		}
 		
-		return Request.Post(joinURIs(this.uri, "files"))
-								  .bodyString(metadata, ContentType.APPLICATION_JSON)
-							      .execute()
-							      .handleResponse(new ResponseHandleBuilder(HttpStatus.SC_CREATED));
+		final Creation creation = gson.fromJson(Request.Post(joinURIs(this.uri, "files"))
+											 		   .bodyString(metadata, ContentType.APPLICATION_JSON)
+											 	       .execute()
+											 	       .handleResponse(new ResponseHandleBuilder(HttpStatus.SC_CREATED)),
+											 	Creation.class);
+		
+		final LinkedTreeMap<?, ?> md = (LinkedTreeMap<?, ?>) gson.fromJson(metadata, Object.class);
+		
+		// Cache `uid`/`mongo_id`
+		cache.setMongoId(findUid(md), getMongoIdFromPath(creation.getFile()));
+		
+		return creation;
 	}
 	
-	public void get() {
-		// TODO
+	/**
+	 * Queries the metadata for the given `mongo_id`.
+	 * 
+	 * @param mongoId
+	 * @return
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> get(final String mongoId) throws ClientProtocolException, UnsupportedEncodingException, IOException, URISyntaxException {
+		final ResponseHandleBuilder rhandler = new ResponseHandleBuilder(HttpStatus.SC_OK, true);
+		
+		final LinkedTreeMap<?, ?> metadata = (LinkedTreeMap<?, ?>) 
+				gson.fromJson(Request.Get(joinURIs(this.uri, "files", URLEncoder.encode(mongoId, "UTF-8")))
+									 .execute()
+									 .handleResponse(rhandler),
+					          Object.class);
+		
+		// Cache etag
+		cache.setEtag(mongoId, rhandler.getEtag());
+		
+		// Cache `uid`/`mongo_id`
+		cache.setMongoId(findUid(metadata), mongoId);
+		
+		return metadata;
+	}
+	
+	/**
+	 * Queries the metadata for the given `uid`.
+	 * 
+	 * @param uid
+	 * @return
+	 * @throws Error
+	 * @throws ClientProtocolException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 * @throws ClientException If the `uid` cannot be mapped to a `mongo_id`.
+	 */
+	public LinkedTreeMap<?, ?> getByUid(final String uid) throws Error, ClientProtocolException, IOException, URISyntaxException, ClientException {
+		return get(getMongoIdByUid(uid));
 	}
 	
 	public void update() {
@@ -208,8 +259,9 @@ public class Client {
 	 * @throws ClientProtocolException
 	 * @throws IOException
 	 * @throws URISyntaxException
+	 * @throws ClientException 
 	 */
-	public void deleteByUid(final String uid) throws Error, ClientProtocolException, IOException, URISyntaxException {
+	public void deleteByUid(final String uid) throws Error, ClientProtocolException, IOException, URISyntaxException, ClientException {
 		delete(getMongoIdByUid(uid));
 	}
 	
@@ -222,8 +274,9 @@ public class Client {
 	 * @throws ClientProtocolException If no `mongo_id` has been found.
 	 * @throws IOException
 	 * @throws URISyntaxException
+	 * @throws ClientException 
 	 */
-	protected String getMongoIdByUid(final String uid) throws Error, ClientProtocolException, IOException, URISyntaxException {
+	protected String getMongoIdByUid(final String uid) throws Error, ClientProtocolException, IOException, URISyntaxException, ClientException {
 		String mongoId = cache.getMongoId(uid);
 		
 		if(null == mongoId) {
@@ -233,11 +286,26 @@ public class Client {
 			
 			mongoId = cache.getMongoId(uid);
 			if(null == mongoId) {
-				throw new ClientProtocolException("The uid `" + uid +"` is not present in the file catalog");
+				throw new ClientException("The uid `" + uid +"` is not present in the file catalog");
 			}
 		}
 		
 		return mongoId;
+	}
+	
+	/**
+	 * Returns the `uid` that is found in the metadata responded by the server.
+	 * 
+	 * @param metadata
+	 * @return
+	 * @throws ClientException
+	 */
+	protected String findUid(final LinkedTreeMap<?, ?> metadata) throws ClientException {
+		if(metadata.containsKey("uid")) {
+			return metadata.get("uid").toString();
+		} else {
+			throw new ClientException("Cannot find `uid` in server response.");
+		}
 	}
 	
 	/**
@@ -304,11 +372,43 @@ public class Client {
 		return uri;
 	}
 	
+	/**
+	 * The server response might contain a list of `files`, or a `file` that is actually a
+	 * path how one can get detailed information from the server for a specific `mongo_id`:
+	 * `/api/files/580fa1973a7d492ef5a367da`.
+	 * 
+	 * To obtain the last part (that is te `mongo_id`) one can use this method.
+	 * 
+	 * @throws IllegalArgumentException An IllegalArgumentException is thrown when no `mongo_id` could be found in the path.
+	 * @param path
+	 * @return
+	 */
+	public static String getMongoIdFromPath(final String path) {
+		int lastSep = path.lastIndexOf('/');
+		
+		if(-1 == lastSep || lastSep == path.length() - 1) {
+			throw new IllegalArgumentException("The given path does not look like as expected.");
+		}
+		
+		return path.substring(lastSep + 1);
+	}
+	
 	protected class ResponseHandleBuilder implements ResponseHandler<String> {
 		private int goodResponseCode;
+		private String etag;
+		private boolean etagRequired;
 		
 		public ResponseHandleBuilder(int goodResponseCode) {
+			this(goodResponseCode, false);
+		}
+		
+		public ResponseHandleBuilder(int goodResponseCode, boolean etagRequired) {
 			this.goodResponseCode = goodResponseCode;
+			this.etagRequired = etagRequired;
+		}
+		
+		public String getEtag() {
+			return etag;
 		}
 		
 		public String readContent(final HttpEntity entity) throws UnsupportedOperationException, IOException {
@@ -334,12 +434,26 @@ public class Client {
 			return sb.toString();
 		}
 		
+		@Override
 		public String handleResponse(final HttpResponse response) throws IOException {
 			final StatusLine statusLine = response.getStatusLine();
 			final HttpEntity entity = response.getEntity();
 			final String serverResponseString = readContent(entity);
 			
 			if(statusLine.getStatusCode() == this.goodResponseCode) {
+				// Find Etag
+				final Header header = response.getFirstHeader("etag");
+				
+				if(etagRequired && null == header) {
+					throw new ClientException("The server responded without an etag");
+				} else if(null != header) {
+					etag = header.getValue();
+					
+					if(etagRequired && null == etag) {
+						throw new ClientException("The server responded without an etag");
+					}
+				}
+				
 				return serverResponseString;
 			} else {
 				if (null == entity) {
