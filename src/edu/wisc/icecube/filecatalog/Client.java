@@ -181,6 +181,7 @@ public class Client {
 	/**
 	 * Deletes metadata by `mongo_id`.
 	 * 
+	 * @see #deleteByUid(String)
 	 * @param mongoId The `mongo_id`.
 	 * @throws ClientProtocolException
 	 * @throws IOException
@@ -194,6 +195,47 @@ public class Client {
 		Request.Delete(joinURIs(this.uri, "files", URLEncoder.encode(mongoId, "UTF-8")))
 								.execute()
 								.handleResponse(new ResponseHandleBuilder(HttpStatus.SC_NO_CONTENT));
+	}
+	
+	/**
+	 * Deletes the metadata by `uid`.
+	 * 
+	 * @see #delete(String)
+	 * @param uid
+	 * @throws Error
+	 * @throws ClientProtocolException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public void deleteByUid(final String uid) throws Error, ClientProtocolException, IOException, URISyntaxException {
+		delete(getMongoIdByUid(uid));
+	}
+	
+	/**
+	 * Tries to find the corresponding `mongo_id` for the given `uid`.
+	 * 
+	 * @param uid
+	 * @return
+	 * @throws Error
+	 * @throws ClientProtocolException If no `mongo_id` has been found.
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	protected String getMongoIdByUid(final String uid) throws Error, ClientProtocolException, IOException, URISyntaxException {
+		String mongoId = cache.getMongoId(uid);
+		
+		if(null == mongoId) {
+			// OK, mongo_id isn't in the cache. Query it
+			getList("{\"uid\": \"" + uid + "\"}");
+			// We don't need to handle the output since getList() caches uid/mongo_id
+			
+			mongoId = cache.getMongoId(uid);
+			if(null == mongoId) {
+				throw new ClientProtocolException("The uid `" + uid +"` is not present in the file catalog");
+			}
+		}
+		
+		return mongoId;
 	}
 	
 	/**
