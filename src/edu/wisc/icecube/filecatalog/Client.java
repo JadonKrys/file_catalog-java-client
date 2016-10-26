@@ -23,6 +23,8 @@ import org.apache.http.entity.ContentType;
 import com.google.gson.Gson;
 import com.google.gson.internal.LinkedTreeMap;
 
+import edu.wisc.icecube.filecatalog.Error.ConflictError;
+import edu.wisc.icecube.filecatalog.Error.NotFoundError;
 import edu.wisc.icecube.filecatalog.gson.BasicMetaData;
 import edu.wisc.icecube.filecatalog.gson.Creation;
 import edu.wisc.icecube.filecatalog.gson.FileList;
@@ -160,7 +162,7 @@ public class Client {
 	 * @throws Error Any error that has the server reported
 	 */
 	public Creation create(final String metadata) throws ClientProtocolException, IOException, URISyntaxException, Error {
-		if(null == metadata || 0 == metadata.length()) {
+		if(null == metadata || metadata.isEmpty()) {
 			throw new IllegalArgumentException("No metadata given");
 		}
 		
@@ -221,12 +223,279 @@ public class Client {
 		return get(getMongoIdByUid(uid));
 	}
 	
-	public void update() {
-		// TODO
+	/**
+	 * Updates the metadata by `mongo_id`.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag.
+	 * 
+	 * @param mongoId The `mongo_id` identifier for the metadata
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> update(final String mongoId, final String metadata) throws ClientProtocolException, UnsupportedEncodingException, IOException, URISyntaxException {
+		return update(mongoId, metadata, false);
 	}
 	
-	public void replace() {
-		// TODO
+	/**
+	 * Updates the metadata by `mongo_id`.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag. If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * 
+	 * @param mongoId The `mongo_id` identifier for the metadata
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @param clearCache If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> update(final String mongoId, final String metadata, final boolean clearCache) throws ClientProtocolException, UnsupportedEncodingException, IOException, URISyntaxException {
+		return updateOrReplace(mongoId, metadata, clearCache, Operation.UPDATE);
+	}
+	
+	/**
+	 * Updates the metadata by `uid`.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag.
+	 * 
+	 * @param uid The `uid`.
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws Error
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws ClientException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> updateByUid(final String uid, final String metadata) throws Error, ClientProtocolException, UnsupportedEncodingException, ClientException, IOException, URISyntaxException {
+		return updateByUid(uid, metadata, false);
+	}
+	
+	/**
+	 * Updates the metadata by `uid`.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag. If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * 
+	 * @param uid The `uid`.
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @param clearCache If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws Error
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws ClientException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> updateByUid(final String uid, final String metadata, final boolean clearCache) throws Error, ClientProtocolException, UnsupportedEncodingException, ClientException, IOException, URISyntaxException {
+		return update(getMongoIdByUid(uid), metadata, clearCache);
+	}
+	
+	/**
+	 * Replaces the metadata by `mongo_id`. That means, only the data that is passed with the <code>metadata</code>
+	 * will be written into the database. `mongo_id` and `uid` will be added automatically by the server.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag.
+	 * 
+	 * @param mongoId The `mongo_id` identifier for the metadata
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> replace(final String mongoId, final String metadata) throws ClientProtocolException, UnsupportedEncodingException, IOException, URISyntaxException {
+		return replace(mongoId, metadata, false);
+	}
+	
+	/**
+	 * Replaces the metadata by `mongo_id`. That means, only the data that is passed with the <code>metadata</code>
+	 * will be written into the database. `mongo_id` and `uid` will be added automatically by the server.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag. If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * 
+	 * @param mongoId The `mongo_id` identifier for the metadata
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @param clearCache If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> replace(final String mongoId, final String metadata, final boolean clearCache) throws ClientProtocolException, UnsupportedEncodingException, IOException, URISyntaxException {
+		return updateOrReplace(mongoId, metadata, clearCache, Operation.REPLACE);
+	}
+	
+	/**
+	 * Replaces the metadata by `mongo_id`. That means, only the data that is passed with the <code>metadata</code>
+	 * will be written into the database. `mongo_id` and `uid` will be added automatically by the server.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag.
+	 * 
+	 * @param uid The `uid`.
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws Error
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws ClientException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> replaceByUid(final String uid, final String metadata) throws Error, ClientProtocolException, UnsupportedEncodingException, ClientException, IOException, URISyntaxException {
+		return replaceByUid(uid, metadata, false);
+	}
+	
+	/**
+	 * Replaces the metadata by `mongo_id`. That means, only the data that is passed with the <code>metadata</code>
+	 * will be written into the database. `mongo_id` and `uid` will be added automatically by the server.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag. If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * 
+	 * @param uid The `uid`.
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @param clearCache If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws Error
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws ClientException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	public LinkedTreeMap<?, ?> replaceByUid(final String uid, final String metadata, final boolean clearCache) throws Error, ClientProtocolException, UnsupportedEncodingException, ClientException, IOException, URISyntaxException {
+		return replace(getMongoIdByUid(uid), metadata, clearCache);
+	}
+	
+	/**
+	 * Represents the operation that should be executed in {@link Client#updateOrReplace(String, String, boolean, Operation)}.
+	 */
+	protected enum Operation {UPDATE, REPLACE};
+
+	/**
+	 * Since the REPLACE and UPDATE operation only differ in the Http method (PUT, PATCH),
+	 * we only need one method that can by used bu the update and replace methods.
+	 * 
+	 * <b>Etag:</b> If the metadata with this `mongo_id` has already been queried with this instance, the etag
+	 * has been cached and will be used for updating. If there is no Etag in the cache, {@link #get(String)}
+	 * will be executed in order to get the Etag. If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * 
+	 * @param mongoId The `mongo_id` identifier for the metadata
+	 * @param metadata The metadata as JSON string. E.g. <code>{"backup": True}</code>
+	 * @param clearCache If <code>clearCache</code> is <code>true</code>, the {@link #get(String)}
+	 * will be executed to get the latest Etag.
+	 * @param operation {@link Operation#REPLACE} or {@link Operation#UPDATE}.
+	 * @return The updated metadata
+	 * @throws ConflictError If the Etag does not match. Try clearing the cache by using {@link #update(String, String, boolean)}.
+	 * @throws NotFoundError If no metadata by the given `mongo_id` has been found.
+	 * @throws ClientProtocolException
+	 * @throws UnsupportedEncodingException
+	 * @throws IOException
+	 * @throws URISyntaxException
+	 */
+	protected LinkedTreeMap<?, ?> updateOrReplace(final String mongoId, final String metadata, final boolean clearCache, final Operation operation) throws ClientProtocolException, UnsupportedEncodingException, IOException, URISyntaxException {
+		if(null == metadata || metadata.isEmpty()) {
+			throw new IllegalArgumentException("No metadata given");
+		}
+		
+		// If clearCache is set to true, it will be forced that
+		// the etag will be queried from the server and not be
+		// get from the cache
+		if(clearCache) {
+			cache.deleteEtag(mongoId);
+		}
+		
+		String etag = cache.getEtag(mongoId);
+		if(null == etag) {
+			// OK, no etag in cache. Use the get() method.
+			// There is no need to interpret the result since get()
+			// Caches the etag automatically
+			get(mongoId);
+			
+			// Let's try again...
+			etag = cache.getEtag(mongoId);
+			if(null == etag) {
+				throw new ClientException("Could not update file with `mongo_id` = " + mongoId + " because we could not find the etag");
+			}
+		}
+		
+		// Let's see... we have the mongo_id, metadata, and the etag... everything we need we have. Yay!
+		Request request = null;
+		final URI uri = joinURIs(this.uri, "files", URLEncoder.encode(mongoId, "UTF-8"));
+		
+		switch(operation) {
+			case REPLACE:
+				request = Request.Put(uri);
+				break;
+				
+			case UPDATE:
+				request = Request.Patch(uri);
+				break;
+				
+			default:
+				throw new UnsupportedOperationException("Operation " + operation + " is not supported.");
+		}
+		
+		final ResponseHandleBuilder rhandler = new ResponseHandleBuilder(HttpStatus.SC_OK, true);
+		
+		final String result = request.bodyString(metadata, ContentType.APPLICATION_JSON)
+								     .addHeader("If-None-Match", etag)
+								     .execute()
+								     .handleResponse(rhandler);
+		
+		// Cache etag
+		cache.setEtag(mongoId, rhandler.getEtag());
+		
+		return (LinkedTreeMap<?, ?>) gson.fromJson(result, Object.class);
 	}
 	
 	/**
@@ -411,7 +680,7 @@ public class Client {
 			return etag;
 		}
 		
-		public String readContent(final HttpEntity entity) throws UnsupportedOperationException, IOException {
+		private String readContent(final HttpEntity entity) throws UnsupportedOperationException, IOException {
 			if(null == entity) {
 				return null;
 			}

@@ -3,6 +3,7 @@ package edu.wisc.icecube.filecatalog.tests;
 import static org.junit.Assert.*;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
 import java.util.Date;
 import java.util.Random;
@@ -12,6 +13,9 @@ import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
+
+import com.google.gson.Gson;
+import com.google.gson.internal.LinkedTreeMap;
 
 import edu.wisc.icecube.filecatalog.Client;
 import edu.wisc.icecube.filecatalog.ClientException;
@@ -28,15 +32,22 @@ public class ClientTest {
 	private static String metadata;
 	private static String uid;
 	private static String createdFile;
+	private static String updateMetadata;
+	private static Gson gson;
 	
 	@BeforeClass
 	public static void setUpBeforeClass() throws Exception {
 		client = new Client("http://localhost", 8888);
 		
+		gson = new Gson();
+		
 		uid = "__test_java_" + new Date();
 		
 		metadata = "{'uid': '" + uid + "', 'locations': ['/path/to/file.dat'], 'checksum': '" + getFakeSHA512(42) + "'}";
 		metadata = metadata.replace('\'', '"');
+		
+		updateMetadata = "{'backup': true}";
+		updateMetadata = updateMetadata.replace('\'', '"');
 	}
 
 	@Test
@@ -116,6 +127,19 @@ public class ClientTest {
 		final FileList list = client.getList(("{'uid': '" + uid + "'}").replace('\'', '"'));
 		
 		assertArrayEquals(new Object[] {createdFile}, list.getFiles());
+	}
+	
+	@Test
+	public void testGet() throws Error, ClientProtocolException, ClientException, IOException, URISyntaxException {
+		client.getByUid(uid);
+	}
+	
+	@Test
+	public void testUpdate() throws Error, ClientProtocolException, UnsupportedEncodingException, ClientException, IOException, URISyntaxException {
+		final LinkedTreeMap<?, ?> updatedMetadata = client.updateByUid(uid, updateMetadata);
+		
+//		final LinkedTreeMap<?, ?> expectation = (LinkedTreeMap<?, ?>) gson.fromJson(metadata, Object.class);
+//		expectation.put("mongo_id", Client.getMongoIdFromPath(createdFile));
 	}
 	
 	@Test(expected = ClientException.class)
