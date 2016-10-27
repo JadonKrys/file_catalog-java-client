@@ -171,6 +171,7 @@ public class ClientTest {
 		
 		expectation.put("mongo_id", mongoId);
 		result.remove("_links");
+		result.remove("meta_modify_date");
 		
 		assertEquals(expectation, result);
 	}
@@ -201,6 +202,7 @@ public class ClientTest {
 		expectation.put("mongo_id", mongoId);
 		expectation.putAll(update);
 		updatedMetadata.remove("_links");
+		updatedMetadata.remove("meta_modify_date");
 		
 		assertEquals(expectation, updatedMetadata);
 	}
@@ -219,6 +221,7 @@ public class ClientTest {
 		expectation.put("mongo_id", mongoId);
 		expectation.put("uid", uid);
 		replacedMetadata.remove("_links");
+		replacedMetadata.remove("meta_modify_date");
 		
 		assertEquals(expectation, replacedMetadata);
 	}
