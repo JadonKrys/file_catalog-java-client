@@ -8,6 +8,10 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
@@ -169,7 +173,7 @@ public class Client {
 		final Creation creation = gson.fromJson(Request.Post(joinURIs(this.uri, "files"))
 											 		   .bodyString(metadata, ContentType.APPLICATION_JSON)
 											 	       .execute()
-											 	       .handleResponse(new ResponseHandleBuilder(HttpStatus.SC_CREATED)),
+											 	       .handleResponse(new ResponseHandleBuilder(HttpStatus.SC_CREATED, HttpStatus.SC_OK)),
 											 	Creation.class);
 		
 		final LinkedTreeMap<?, ?> md = (LinkedTreeMap<?, ?>) gson.fromJson(metadata, Object.class);
@@ -663,16 +667,28 @@ public class Client {
 	}
 	
 	protected class ResponseHandleBuilder implements ResponseHandler<String> {
-		private int goodResponseCode;
+		private Set<Integer> goodResponseCodes;
 		private String etag;
 		private boolean etagRequired;
 		
-		public ResponseHandleBuilder(int goodResponseCode) {
+		public ResponseHandleBuilder(final int goodResponseCode) {
 			this(goodResponseCode, false);
 		}
 		
-		public ResponseHandleBuilder(int goodResponseCode, boolean etagRequired) {
-			this.goodResponseCode = goodResponseCode;
+		public ResponseHandleBuilder(final Collection<Integer> goodResponseCodes) {
+			this(goodResponseCodes, false);
+		}
+		
+		public ResponseHandleBuilder(final Integer... goodResponseCodes) {
+			this(Arrays.asList(goodResponseCodes), false);
+		}
+		
+		public ResponseHandleBuilder(final int goodResponseCodes, final boolean etagRequired) {
+			this(Arrays.asList(goodResponseCodes), etagRequired);
+		}
+		
+		public ResponseHandleBuilder(final Collection<Integer> goodResponseCodes, final boolean etagRequired) {
+			this.goodResponseCodes = new HashSet<>(goodResponseCodes);
 			this.etagRequired = etagRequired;
 		}
 		
@@ -709,7 +725,7 @@ public class Client {
 			final HttpEntity entity = response.getEntity();
 			final String serverResponseString = readContent(entity);
 			
-			if(statusLine.getStatusCode() == this.goodResponseCode) {
+			if(this.goodResponseCodes.contains(statusLine.getStatusCode())) {
 				// Find Etag
 				final Header header = response.getFirstHeader("etag");
 				
