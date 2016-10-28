@@ -1,5 +1,3 @@
-package edu.wisc.icecube.filecatalog.tests;
-
 import static org.junit.Assert.*;
 
 import java.io.IOException;
